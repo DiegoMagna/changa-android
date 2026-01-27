@@ -21,9 +21,14 @@ import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.snapshotFlow
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +37,7 @@ fun AltaPrestadorScreen(
     viewModel: CategoriasViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     placesClient: PlacesClient
 ) {
+    val placesLogTag = "PLACES_AUTOCOMPLETE"
     val token = remember { AutocompleteSessionToken.newInstance() }
 
     var nombre by remember { mutableStateOf("") }
@@ -48,7 +54,26 @@ fun AltaPrestadorScreen(
     var categoriaSeleccionada by remember { mutableStateOf<CategoriaResponse?>(null) }
 
     var expanded by remember { mutableStateOf(false) }
+    var suggestionsExpanded by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { direccion.trim() }
+            .map { it.replace(Regex("\\s+"), " ") }
+            .distinctUntilChanged()
+            .debounce(350)
+            .collectLatest { query ->
+                if (query.length >= 3) {
+                    Log.d(placesLogTag, "Requesting autocomplete for query=\"$query\"")
+                    val sugerencias = buscarSugerenciasDireccion(query, placesClient, token)
+                    direccionesSugeridas = sugerencias
+                    suggestionsExpanded = sugerencias.isNotEmpty()
+                } else {
+                    direccionesSugeridas = emptyList()
+                    suggestionsExpanded = false
+                }
+            }
+    }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Column(
@@ -65,27 +90,34 @@ fun AltaPrestadorScreen(
             OutlinedTextField(telefono, { telefono = it }, label = { Text("Teléfono") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(dni, { dni = it }, label = { Text("DNI") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(cuit, { cuit = it }, label = { Text("CUIT") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(direccion, { direccion = it }, label = { Text("Dirección") }, modifier = Modifier.fillMaxWidth())
 
-            LaunchedEffect(direccion) {
-                if (direccion.length >= 3) {
-                    delay(300)
-                    direccionesSugeridas = buscarSugerenciasDireccion(direccion, placesClient, token)
-                } else {
-                    direccionesSugeridas = emptyList()
-                }
-            }
+            ExposedDropdownMenuBox(
+                expanded = suggestionsExpanded,
+                onExpandedChange = { /* controlled by query results */ }
+            ) {
+                OutlinedTextField(
+                    value = direccion,
+                    onValueChange = { direccion = it },
+                    label = { Text("Dirección") },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
 
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp)) {
-                items(direccionesSugeridas) { sugerencia ->
-                    TextButton(onClick = {
-                        direccion = sugerencia
-                        direccionesSugeridas = emptyList()
-                        coroutineScope.launch {
-                            direccionCoordenadas = obtenerCoordenadasDesdeDireccion(sugerencia)
-                        }
-                    }) {
-                        Text(sugerencia)
+                ExposedDropdownMenu(
+                    expanded = suggestionsExpanded,
+                    onDismissRequest = { suggestionsExpanded = false }
+                ) {
+                    direccionesSugeridas.forEach { sugerencia ->
+                        DropdownMenuItem(
+                            text = { Text(sugerencia) },
+                            onClick = {
+                                direccion = sugerencia
+                                direccionesSugeridas = emptyList()
+                                suggestionsExpanded = false
+                                coroutineScope.launch {
+                                    direccionCoordenadas = obtenerCoordenadasDesdeDireccion(sugerencia)
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -182,7 +214,7 @@ suspend fun buscarSugerenciasDireccion(
     input: String,
     placesClient: PlacesClient,
     token: AutocompleteSessionToken
-): List<String> = suspendCoroutine { continuation ->
+): List<String> = suspendCancellableCoroutine { continuation ->
 
     val request = FindAutocompletePredictionsRequest.builder()
         .setSessionToken(token)
@@ -191,22 +223,31 @@ suspend fun buscarSugerenciasDireccion(
         // .setCountries(listOf("AR"))
         .build()
 
-    placesClient.findAutocompletePredictions(request)
+    Log.d("PLACES_AUTOCOMPLETE", "Requesting Places Autocomplete for \"$input\"")
+
+    val task = placesClient.findAutocompletePredictions(request)
         .addOnSuccessListener { response ->
             val sugerencias = response.autocompletePredictions
                 .map { it.getFullText(null).toString() }
-            Log.d("PLACES", "OK (${sugerencias.size}) -> $sugerencias")
-            continuation.resume(sugerencias)
+            Log.d("PLACES_AUTOCOMPLETE", "OK (${sugerencias.size}) -> $sugerencias")
+            if (continuation.isActive) {
+                continuation.resume(sugerencias)
+            }
         }
         .addOnFailureListener { e ->
-            // MOSTRAR el motivo real
             val msg = when (e) {
                 is ApiException -> "ApiException status=${e.statusCode} message=${e.message}"
                 else -> e.message ?: e.toString()
             }
-            Log.e("PLACES", "Autocomplete FAIL -> $msg", e)
-            continuation.resume(emptyList())
+            Log.e("PLACES_AUTOCOMPLETE", "Autocomplete FAIL -> $msg", e)
+            if (continuation.isActive) {
+                continuation.resume(emptyList())
+            }
         }
+
+    continuation.invokeOnCancellation {
+        task.cancel()
+    }
 }
 
 suspend fun obtenerCoordenadasDesdeDireccion(direccion: String): String {
