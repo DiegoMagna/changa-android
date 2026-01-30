@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.snapshotFlow
+
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -25,10 +27,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.snapshotFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import com.google.android.gms.common.api.ApiException
-import kotlinx.coroutines.suspendCancellableCoroutine
+
+
+
+import kotlinx.coroutines.cancel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -246,8 +251,13 @@ suspend fun buscarSugerenciasDireccion(
         }
 
     continuation.invokeOnCancellation {
-        task.cancel()
+        // no-op (no se puede cancelar el Task)
     }
+
+
+
+
+
 }
 
 suspend fun obtenerCoordenadasDesdeDireccion(direccion: String): String {
