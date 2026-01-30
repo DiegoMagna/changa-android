@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import android.util.Log
-import com.example.changa.ui.AltaPrestadorScreen
+import com.example.changa.ui.AppNavHost
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
 
@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
         Log.d(placesLogTag, "PlacesClient creado")
 
         setContent {
-            AltaPrestadorScreen(placesClient = placesClient)
+            AppNavHost(placesClient = placesClient)
         }
     }
 }

@@ -33,14 +33,14 @@ import com.google.android.gms.common.api.ApiException
 
 
 
-import kotlinx.coroutines.cancel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AltaPrestadorScreen(
     modifier: Modifier = Modifier,
     viewModel: CategoriasViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
-    placesClient: PlacesClient
+    placesClient: PlacesClient,
+    onPrestadorCreado: (String?) -> Unit = {}
 ) {
     val placesLogTag = "PLACES_AUTOCOMPLETE"
     val token = remember { AutocompleteSessionToken.newInstance() }
@@ -204,7 +204,8 @@ fun AltaPrestadorScreen(
                         dniInt,
                         cuitLong,
                         viewModel.obtenerIdsSeleccionados(),
-                        snackbarHostState
+                        snackbarHostState,
+                        onPrestadorCreado
                     )
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -274,7 +275,8 @@ fun guardarPrestador(
     dni: Int,
     cuit: Long,
     categoriaIds: List<Int>,
-    snackbarHostState: SnackbarHostState
+    snackbarHostState: SnackbarHostState,
+    onPrestadorCreado: (String?) -> Unit
 ) {
     if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
         CoroutineScope(Dispatchers.Main).launch {
@@ -314,7 +316,20 @@ fun guardarPrestador(
 
             withContext(Dispatchers.Main) {
                 if (response.isSuccessful) {
-                    snackbarHostState.showSnackbar("✅ Prestador guardado correctamente")
+                    val prestadorId = response.body()?.id?.toString()
+                        ?: response.headers()["Location"]?.substringAfterLast("/")
+                    if (prestadorId == null) {
+                        Log.w(
+                            "AltaPrestador",
+                            "Prestador creado sin ID en respuesta. TODO: confirmar API devuelve id."
+                        )
+                        snackbarHostState.showSnackbar(
+                            "✅ Prestador guardado. No recibimos ID; completá el perfil manualmente."
+                        )
+                    } else {
+                        snackbarHostState.showSnackbar("✅ Prestador guardado correctamente")
+                    }
+                    onPrestadorCreado(prestadorId)
                 } else {
                     snackbarHostState.showSnackbar("❌ Error: ${response.code()}")
                 }
