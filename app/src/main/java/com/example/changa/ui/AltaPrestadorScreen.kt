@@ -312,7 +312,9 @@ fun guardarPrestador(
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val response = RetrofitClient.apiService.crearPrestador(prestador)
-            Log.d("AltaPrestador", "Respuesta: ${response.message()}")
+            val errorText = response.errorBody()?.string()
+            Log.d("AltaPrestador", "HTTP ${response.code()} ${response.message()}")
+            Log.e("AltaPrestador", "ErrorBody: $errorText")
 
             withContext(Dispatchers.Main) {
                 if (response.isSuccessful) {

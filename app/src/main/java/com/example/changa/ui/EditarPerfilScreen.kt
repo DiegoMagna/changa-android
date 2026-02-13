@@ -126,7 +126,8 @@ fun EditarPerfilScreen(
 
             Button(
                 onClick = {
-                    val id = prestadorId?.toLongOrNull()
+                    val id = prestadorId?.toIntOrNull()
+
                     if (id == null) {
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar(
@@ -153,9 +154,10 @@ fun EditarPerfilScreen(
                                 if (response.isSuccessful) {
                                     snackbarHostState.showSnackbar("✅ Perfil actualizado")
                                 } else {
-                                    snackbarHostState.showSnackbar(
-                                        "❌ Error al guardar: ${response.code()}"
-                                    )
+                                    val err = response.errorBody()?.string()
+                                    snackbarHostState.showSnackbar("❌ ${response.code()} ${err ?: ""}".trim())
+                                    Log.e("EditarPerfil", "HTTP ${response.code()} errorBody=$err")
+
                                 }
                             }
                         } catch (e: Exception) {

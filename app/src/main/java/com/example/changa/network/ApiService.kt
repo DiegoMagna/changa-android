@@ -20,7 +20,8 @@ interface ApiService {
 
     @PATCH("prestadores/{id}/perfil")
     suspend fun actualizarPerfilPrestador(
-        @Path("id") id: Long,
+        @Path("id") id: Int,
         @Body request: UpdatePrestadorPerfilRequest
     ): Response<Unit>
+
 }
